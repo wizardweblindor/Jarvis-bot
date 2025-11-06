@@ -1,12 +1,9 @@
 import os
 import json
 import openai
-import asyncio
 from datetime import datetime, timedelta
 from telegram import Update
-from telegram.ext import (
-ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
-)
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 import yfinance as yf
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -45,7 +42,4 @@ return portfolio.get(str(user_id), [])
 except FileNotFoundError:
 return []
 
-def save_message(user_id, role, content):
-if user_id not in user_memory:
-user_memory[user_id] = []
-user_memory[user_id].append({"role": role, "content": content})
+def save_message(user
