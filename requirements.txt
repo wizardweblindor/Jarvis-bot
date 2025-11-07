@@ -1,4 +1,4 @@
-python-telegram-bot==20.7
+python-telegram-bot[asyncio]==20.7
 openai==2.7.1
 pandas==2.3.3
 numpy==2.3.4
