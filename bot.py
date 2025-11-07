@@ -1,26 +1,28 @@
 import os
 import logging
+import asyncio
 import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# Setup logging
+# ---------------------- Logging Setup ----------------------
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Load tokens from environment variables
+# ---------------------- Environment Variables ----------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 openai.api_key = OPENAI_API_KEY
 
-# Start command
+# ---------------------- Start Command ----------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm your Jarvis bot 🤖 — how can I help?")
+    await update.message.reply_text("Hello! I'm Jarvis 🤖 — your AI assistant is online!")
 
-# Chat messages
+# ---------------------- Chat Handler ----------------------
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     try:
@@ -34,7 +36,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error processing message: {e}")
         await update.message.reply_text(f"Error: {str(e)}")
 
-# Main function
+# ---------------------- Main Function ----------------------
 def main():
     try:
         app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -42,7 +44,7 @@ def main():
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
         logger.info("Bot is starting...")
-        app.run_polling()
+        asyncio.run(app.run_polling())
     except Exception as e:
         logger.critical(f"Bot failed to start: {e}")
 
