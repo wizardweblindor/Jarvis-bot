@@ -1,4 +1,34 @@
 import os
+from flask import Flask
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import threading
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+PORT = int(os.environ.get("PORT", 10000))
+
+# Flask dummy server
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+# Telegram bot handlers
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello! I'm your bot.")
+
+def run_bot():
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.run_polling()
+
+# Start Telegram bot in a separate thread
+threading.Thread(target=run_bot).start()
+
+# Run Flask server to satisfy Render
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=PORT)import os
 import threading
 from flask import Flask
 from telegram import Update
