@@ -64,9 +64,10 @@ app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_with_gpt
 # Run Telegram bot safely in a thread
 # -------------------------
 def run_bot():
+    import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(app_tg.run_polling())
+    loop.run_until_complete(app_tg.run_polling(stop_signals=None, close_loop=False))
 
 # -------------------------
 # Run Flask + Bot
