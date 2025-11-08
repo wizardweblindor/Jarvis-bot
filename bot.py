@@ -1,43 +1,42 @@
-import os
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+from telegram import Update, Bot
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
+import os
 
-# Environment variables
-TOKEN = os.environ.get("TELEGRAM_TOKEN")  # Set your bot token in Render secrets
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # Set your deployed URL in Render secrets
+# ---------- CONFIG ----------
+TOKEN = os.environ.get("TELEGRAM_TOKEN")  # Set this in Render as an environment variable
+PORT = int(os.environ.get("PORT", 10000))  # Render assigns a port automatically
 
-# Flask app
-app = Flask(__name__)
 bot = Bot(token=TOKEN)
-dispatcher = Dispatcher(bot, None, workers=0)  # Dispatcher without polling
+app = Flask(__name__)
+dispatcher = Dispatcher(bot, None, workers=0)  # Workers=0 for webhook mode
 
-# Handlers
-def start(update, context):
-    update.message.reply_text("Hello! Jarvis AI Bot is online.")
+# ---------- HANDLERS ----------
+def start(update: Update, context):
+    update.message.reply_text("Hello! Jarvis AI Bot is live 🚀")
 
-def echo(update, context):
-    update.message.reply_text(update.message.text)
+def echo(update: Update, context):
+    update.message.reply_text(f"You said: {update.message.text}")
 
-# Add handlers
+# Add handlers to dispatcher
 dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
+dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-# Flask routes
+# ---------- FLASK ROUTES ----------
 @app.route("/")
-def index():
-    return "Bot is running!"
+def home():
+    return "Jarvis AI Bot is live and running!"
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
-    return "OK"
+    return "ok"
 
-# Set webhook on start
+# ---------- MAIN ----------
 if __name__ == "__main__":
-    # Set Telegram webhook
-    bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-    # Use Render's assigned port
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # Set the webhook URL for Telegram
+    HEROKU_URL = os.environ.get("APP_URL") or "https://jarvis-bot-2-zp0b.onrender.com"
+    bot.set_webhook(url=f"{HEROKU_URL}/{TOKEN}")
+    
+    app.run(host="0.0.0.0", port=PORT)
