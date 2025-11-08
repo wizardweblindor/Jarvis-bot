@@ -67,7 +67,13 @@ def run_bot():
     import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(app_tg.run_polling(stop_signals=None, close_loop=False))
+    loop.run_until_complete(
+        app_tg.run_polling(
+            stop_signals=None,
+            close_loop=False,
+            drop_pending_updates=True
+        )
+    )
 
 # -------------------------
 # Run Flask + Bot
