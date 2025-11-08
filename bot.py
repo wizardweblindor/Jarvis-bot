@@ -1,82 +1,84 @@
 import os
 import asyncio
-from threading import Thread
-from flask import Flask, request
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from flask import Flask
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 from openai import OpenAI
 
-# -------------------------
-# Flask setup
-# -------------------------
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "🤖 Jarvis AI Bot is live and ready!"
-
-# -------------------------
-# Environment variables
-# -------------------------
+# === ENVIRONMENT VARIABLES ===
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# -------------------------
-# Initialize clients
-# -------------------------
+# === INITIALIZE CLIENTS ===
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# === FLASK APP (for Render keep-alive and health check) ===
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "🤖 Jarvis Bot is live and running on Render!"
+
+# === TELEGRAM BOT ===
 app_tg = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# -------------------------
-# Telegram command: /start
-# -------------------------
-async def start(update, context):
-    await update.message.reply_text("Hey there 👋 I'm Jarvis — your AI assistant! Send me a message and I’ll reply intelligently.")
+# --- Command: /start ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Hello! Jarvis Bot is online and ready to help!")
 
-# -------------------------
-# Telegram message handler
-# -------------------------
-async def chat_with_gpt(update, context):
+# --- Command: /help ---
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("💡 Just send me a message and I'll reply intelligently using OpenAI!")
+
+# --- Message Handler ---
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
     try:
-        # Call OpenAI ChatGPT
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",  # or "gpt-4o" if you prefer the full model
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are Jarvis, a helpful AI assistant."},
-                {"role": "user", "content": user_message},
-            ],
+                {"role": "user", "content": user_message}
+            ]
         )
 
-        reply = response.choices[0].message.content
-        await update.message.reply_text(reply)
+        bot_reply = completion.choices[0].message.content
+        await update.message.reply_text(bot_reply)
 
     except Exception as e:
-        await update.message.reply_text("⚠️ Sorry, something went wrong.\n" + str(e))
+        await update.message.reply_text(f"⚠️ Error: {e}")
 
-# -------------------------
-# Register handlers
-# -------------------------
+# === ADD HANDLERS ===
 app_tg.add_handler(CommandHandler("start", start))
-app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_with_gpt))
+app_tg.add_handler(CommandHandler("help", help_command))
+app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-# -------------------------
-# Run Telegram bot safely in a thread
-# -------------------------
+# === RUN BOT (polling) ===
 def run_bot():
+    print("🚀 Starting Jarvis AI Bot (Flask + Telegram)...")
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+
     loop.run_until_complete(
         app_tg.run_polling(
             stop_signals=None,
             close_loop=False,
-            drop_pending_updates=True  # ✅ Clears old polling sessions
+            drop_pending_updates=True  # ✅ Avoids duplicate polling conflicts
         )
     )
-# -------------------------
-# Run Flask + Bot
-# -------------------------
+
+# === ENTRY POINT ===
 if __name__ == "__main__":
-    print("🚀 Starting Jarvis AI Bot (Flask + Telegram)...")
+    # Run both Flask and Telegram together
+    from threading import Thread
+
     Thread(target=run_bot, daemon=True).start()
-    app.run(host="0.0.0.0", port=10000, use_reloader=False)
+    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
