@@ -4,3 +4,4 @@ openai==1.47.0
 httpx==0.27.0
 requests==2.32.3
 tqdm==4.67.1
+APScheduler==3.6.3
