@@ -1,4 +1,6 @@
 import os
+import time
+import threading
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
@@ -14,12 +16,12 @@ bot = Bot(token=TOKEN)
 app = Flask(__name__)
 dispatcher = Dispatcher(bot, None, workers=0)
 
-# In-memory storage for simplicity
-tracked_stocks = {}   # {ticker: quantity}
-tracked_bets = []     # list of (stake, odds)
+# In-memory storage
+tracked_stocks = {}  # {ticker: {'qty': int, 'target': float}}
+tracked_bets = []    # list of {'stake': float, 'odds': float, 'goal': float}
 
 # ------------------------
-# Fun Commands
+# Fun commands
 # ------------------------
 def ping(update, context):
     update.message.reply_text("Pong 🏓")
@@ -46,7 +48,7 @@ def roll(update, context):
 dispatcher.add_handler(CommandHandler("roll", roll))
 
 # ------------------------
-# Stock Commands
+# Stock commands
 # ------------------------
 def price(update, context):
     try:
@@ -62,10 +64,11 @@ def add_stock(update, context):
     try:
         ticker = context.args[0].upper()
         qty = int(context.args[1])
-        tracked_stocks[ticker] = tracked_stocks.get(ticker, 0) + qty
-        update.message.reply_text(f"Added {qty} shares of {ticker}. Total: {tracked_stocks[ticker]}")
+        target = float(context.args[2]) if len(context.args) > 2 else None
+        tracked_stocks[ticker] = {'qty': tracked_stocks.get(ticker, {}).get('qty',0) + qty, 'target': target}
+        update.message.reply_text(f"Added {qty} shares of {ticker}. Target: {target if target else 'None'}")
     except:
-        update.message.reply_text("Usage: /addstock <ticker> <quantity>")
+        update.message.reply_text("Usage: /addstock <ticker> <quantity> [target_price]")
 dispatcher.add_handler(CommandHandler("addstock", add_stock))
 
 def portfolio(update, context):
@@ -73,41 +76,75 @@ def portfolio(update, context):
         update.message.reply_text("No stocks tracked yet.")
         return
     msg = "📊 Stock Portfolio:\n"
-    for ticker, qty in tracked_stocks.items():
+    for ticker, data in tracked_stocks.items():
         try:
             r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}").json()
             price_now = r["quoteResponse"]["result"][0]["regularMarketPrice"]
-            msg += f"{ticker}: {qty} shares @ ${price_now} → Total ${price_now * qty}\n"
+            msg += f"{ticker}: {data['qty']} shares @ ${price_now} → Total ${price_now*data['qty']}"
+            if data.get('target'):
+                msg += f" (Target: ${data['target']})"
+            msg += "\n"
         except:
-            msg += f"{ticker}: {qty} shares → Price not found\n"
+            msg += f"{ticker}: {data['qty']} shares → Price not found\n"
     update.message.reply_text(msg)
 dispatcher.add_handler(CommandHandler("portfolio", portfolio))
 
 # ------------------------
-# Betting Commands
+# Betting commands
 # ------------------------
 def add_bet(update, context):
     try:
         stake = float(context.args[0])
         odds = float(context.args[1])
-        tracked_bets.append((stake, odds))
-        update.message.reply_text(f"Added bet: ${stake} at odds {odds}")
+        goal = float(context.args[2]) if len(context.args) > 2 else None
+        tracked_bets.append({'stake': stake, 'odds': odds, 'goal': goal})
+        update.message.reply_text(f"Added bet: ${stake} @ {odds} Goal: {goal if goal else 'None'}")
     except:
-        update.message.reply_text("Usage: /addbet <stake> <decimal_odds>")
+        update.message.reply_text("Usage: /addbet <stake> <decimal_odds> [goal]")
 dispatcher.add_handler(CommandHandler("addbet", add_bet))
 
 def total_bets(update, context):
     if not tracked_bets:
         update.message.reply_text("No bets tracked yet.")
         return
-    total_stake = sum(stake for stake, _ in tracked_bets)
-    total_payout = sum(stake * odds for stake, odds in tracked_bets)
+    total_stake = sum(b['stake'] for b in tracked_bets)
+    total_payout = sum(b['stake'] * b['odds'] for b in tracked_bets)
     msg = "🎲 Betting Summary:\n"
-    for i, (stake, odds) in enumerate(tracked_bets, 1):
-        msg += f"Bet {i}: ${stake} @ {odds} → ${stake*odds}\n"
+    for i, b in enumerate(tracked_bets,1):
+        msg += f"Bet {i}: ${b['stake']} @ {b['odds']} → ${b['stake']*b['odds']} (Goal: {b['goal']})\n"
     msg += f"\nTotal Stake: ${total_stake}\nTotal Potential Payout: ${total_payout}"
     update.message.reply_text(msg)
 dispatcher.add_handler(CommandHandler("totalbets", total_bets))
+
+# ------------------------
+# Background monitor
+# ------------------------
+def monitor():
+    while True:
+        # Check stocks
+        for ticker, data in tracked_stocks.items():
+            try:
+                r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}").json()
+                price_now = r["quoteResponse"]["result"][0]["regularMarketPrice"]
+                target = data.get('target')
+                if target and price_now >= target:
+                    bot.send_message(chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
+                                     text=f"🚨 {ticker} reached target price ${target}! Current: ${price_now}")
+                    tracked_stocks[ticker]['target'] = None  # alert once
+            except:
+                continue
+        
+        # Check bets
+        for b in tracked_bets:
+            payout = b['stake'] * b['odds']
+            if b.get('goal') and payout >= b['goal']:
+                bot.send_message(chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
+                                 text=f"🎯 Bet reached goal! Stake ${b['stake']} @ {b['odds']} → ${payout}")
+                b['goal'] = None
+        time.sleep(60)  # check every 60 seconds
+
+# Start monitor in background
+threading.Thread(target=monitor, daemon=True).start()
 
 # ------------------------
 # Echo fallback
