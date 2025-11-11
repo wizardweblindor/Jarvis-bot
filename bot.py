@@ -1,11 +1,11 @@
 import os
 import time
 import threading
+import random
+import requests
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
-import requests
-import random
 import openai
 
 # ------------------------
@@ -14,16 +14,15 @@ import openai
 TOKEN = os.environ.get("BOT_TOKEN")
 APP_URL = os.environ.get("APP_URL")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-openai.api_key = OPENAI_KEY
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
 dispatcher = Dispatcher(bot, None, workers=0)
 
-# ------------------------
+openai.api_key = OPENAI_API_KEY
+
 # In-memory storage
-# ------------------------
 tracked_stocks = {}  # {ticker: {'qty': int, 'target': float}}
 tracked_bets = []    # list of {'stake': float, 'odds': float, 'goal': float}
 
@@ -128,6 +127,7 @@ dispatcher.add_handler(CommandHandler("totalbets", total_bets))
 # ------------------------
 def monitor():
     while True:
+        # Check stocks
         for ticker, data in tracked_stocks.items():
             try:
                 r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}").json()
@@ -136,10 +136,11 @@ def monitor():
                 if target and price_now >= target:
                     bot.send_message(chat_id=CHAT_ID,
                                      text=f"🚨 {ticker} reached target price ${target}! Current: ${price_now}")
-                    tracked_stocks[ticker]['target'] = None
+                    tracked_stocks[ticker]['target'] = None  # alert once
             except:
                 continue
         
+        # Check bets
         for b in tracked_bets:
             payout = b['stake'] * b['odds']
             if b.get('goal') and payout >= b['goal']:
@@ -151,18 +152,20 @@ def monitor():
 threading.Thread(target=monitor, daemon=True).start()
 
 # ------------------------
-# GPT chat handler
+# OpenAI chat
 # ------------------------
 def chat(update, context):
-    user_text = update.message.text
+    user_message = update.message.text
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": user_message}
+    ]
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_text}],
-            temperature=0.7,
-            max_tokens=300
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
         )
-        reply = response.choices[0].message.content.strip()
+        reply = response.choices[0].message["content"]
         update.message.reply_text(reply)
     except Exception as e:
         update.message.reply_text(f"Error: {e}")
@@ -178,7 +181,6 @@ def webhook():
     dispatcher.process_update(update)
     return "OK"
 
-# Set webhook safely once
 @app.before_request
 def setup_webhook_once():
     if not getattr(app, "webhook_set", False):
