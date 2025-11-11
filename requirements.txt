@@ -20,4 +20,3 @@ packaging==25.0
 tornado==6.1
 certifi==2023.7.22
 idna==3.4
-requests==2.31.0
