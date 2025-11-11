@@ -1,11 +1,10 @@
 import os
 import logging
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 import openai
 
 # ---------- CONFIG ----------
-# Use BOT_TOKEN environment variable
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -14,8 +13,8 @@ if not BOT_TOKEN:
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable not set!")
 
-# Initialize OpenAI client using the new interface
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Set OpenAI API key (no need to create OpenAI() client)
+openai.api_key = OPENAI_API_KEY
 
 # ---------- LOGGING ----------
 logging.basicConfig(
@@ -25,13 +24,8 @@ logger = logging.getLogger(__name__)
 
 # ---------- OPENAI CHAT FUNCTION ----------
 def ask_openai(messages):
-    """
-    messages: list of dicts, e.g.
-    [{"role": "system", "content": "You are a helpful assistant."},
-     {"role": "user", "content": "Hello!"}]
-    """
     try:
-        response = client.chat.completions.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages
         )
