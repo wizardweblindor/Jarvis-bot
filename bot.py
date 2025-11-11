@@ -1,66 +1,77 @@
 import os
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
+import logging
+from telegram import Update, Bot
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 import openai
 
-# ==========================
-# CONFIG
-# ==========================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Telegram Bot Token
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # OpenAI API Key
+# ---------- CONFIG ----------
+# Use BOT_TOKEN environment variable
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-openai.api_key = OPENAI_API_KEY
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable not set!")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable not set!")
 
-# ==========================
-# FLASK APP
-# ==========================
-app = Flask(__name__)
+# Initialize OpenAI client using the new interface
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-bot = Bot(token=TELEGRAM_TOKEN)
-dispatcher = Dispatcher(bot, None, use_context=True)
+# ---------- LOGGING ----------
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# ==========================
-# BOT HANDLERS
-# ==========================
-def start(update: Update, context):
-    update.message.reply_text("Hello! I am your AI assistant. Send me a message and I will respond.")
-
-def chat(update: Update, context):
-    user_message = update.message.text
-
+# ---------- OPENAI CHAT FUNCTION ----------
+def ask_openai(messages):
+    """
+    messages: list of dicts, e.g.
+    [{"role": "system", "content": "You are a helpful assistant."},
+     {"role": "user", "content": "Hello!"}]
+    """
     try:
-        # New OpenAI API usage
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": user_message}]
+            messages=messages
         )
-        answer = response.choices[0].message.content
-        update.message.reply_text(answer)
-
+        return response.choices[0].message.content
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
+        logger.error(f"OpenAI API error: {e}")
+        return "Sorry, I couldn't process that."
 
-# Add handlers to dispatcher
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+# ---------- TELEGRAM COMMANDS ----------
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("Hello! I am your AI assistant. Ask me anything.")
 
-# ==========================
-# FLASK WEBHOOK
-# ==========================
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
-    dispatcher.process_update(update)
-    return "ok"
+def help_command(update: Update, context: CallbackContext):
+    update.message.reply_text("You can just type a message, and I'll reply!")
 
-@app.route("/")
-def index():
-    return "Bot is running!"
+def chat(update: Update, context: CallbackContext):
+    user_text = update.message.text
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": user_text}
+    ]
+    reply = ask_openai(messages)
+    update.message.reply_text(reply)
 
-# ==========================
-# RUN
-# ==========================
+# ---------- MAIN FUNCTION ----------
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    # Command handlers
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help_command))
+
+    # Chat handler
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
+
+    # Start the bot
+    updater.start_polling()
+    logger.info("Bot started!")
+    updater.idle()
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    main()
