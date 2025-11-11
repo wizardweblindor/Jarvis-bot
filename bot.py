@@ -12,6 +12,8 @@ import random
 # ------------------------
 TOKEN = os.environ.get("BOT_TOKEN")
 APP_URL = os.environ.get("APP_URL")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
 dispatcher = Dispatcher(bot, None, workers=0)
@@ -65,7 +67,7 @@ def add_stock(update, context):
         ticker = context.args[0].upper()
         qty = int(context.args[1])
         target = float(context.args[2]) if len(context.args) > 2 else None
-        tracked_stocks[ticker] = {'qty': tracked_stocks.get(ticker, {}).get('qty',0) + qty, 'target': target}
+        tracked_stocks[ticker] = {'qty': tracked_stocks.get(ticker, {}).get('qty', 0) + qty, 'target': target}
         update.message.reply_text(f"Added {qty} shares of {ticker}. Target: {target if target else 'None'}")
     except:
         update.message.reply_text("Usage: /addstock <ticker> <quantity> [target_price]")
@@ -110,7 +112,7 @@ def total_bets(update, context):
     total_stake = sum(b['stake'] for b in tracked_bets)
     total_payout = sum(b['stake'] * b['odds'] for b in tracked_bets)
     msg = "🎲 Betting Summary:\n"
-    for i, b in enumerate(tracked_bets,1):
+    for i, b in enumerate(tracked_bets, 1):
         msg += f"Bet {i}: ${b['stake']} @ {b['odds']} → ${b['stake']*b['odds']} (Goal: {b['goal']})\n"
     msg += f"\nTotal Stake: ${total_stake}\nTotal Potential Payout: ${total_payout}"
     update.message.reply_text(msg)
@@ -128,7 +130,7 @@ def monitor():
                 price_now = r["quoteResponse"]["result"][0]["regularMarketPrice"]
                 target = data.get('target')
                 if target and price_now >= target:
-                    bot.send_message(chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
+                    bot.send_message(chat_id=CHAT_ID,
                                      text=f"🚨 {ticker} reached target price ${target}! Current: ${price_now}")
                     tracked_stocks[ticker]['target'] = None  # alert once
             except:
@@ -138,12 +140,11 @@ def monitor():
         for b in tracked_bets:
             payout = b['stake'] * b['odds']
             if b.get('goal') and payout >= b['goal']:
-                bot.send_message(chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
+                bot.send_message(chat_id=CHAT_ID,
                                  text=f"🎯 Bet reached goal! Stake ${b['stake']} @ {b['odds']} → ${payout}")
                 b['goal'] = None
         time.sleep(60)  # check every 60 seconds
 
-# Start monitor in background
 threading.Thread(target=monitor, daemon=True).start()
 
 # ------------------------
@@ -162,25 +163,7 @@ def webhook():
     dispatcher.process_update(update)
     return "OK"
 
-# ------------------------
-# Flask webhook
-# ------------------------
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "OK"
-
-# ------------------------
-# Flask webhook
-# ------------------------
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "OK"
-
-# ✅ Flask 3.0+ compatible webhook setup
+# Set webhook safely once
 @app.before_request
 def setup_webhook_once():
     if not getattr(app, "webhook_set", False):
@@ -188,6 +171,9 @@ def setup_webhook_once():
         print("✅ Webhook set successfully.")
         app.webhook_set = True
 
+# ------------------------
+# Run app
+# ------------------------
 if __name__ == "__main__":
     print("🚀 Bot is starting up...")
     port = int(os.environ.get("PORT", 10000))
