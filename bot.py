@@ -10,7 +10,7 @@ import random
 # ------------------------
 # Config
 # ------------------------
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TOKEN = os.environ.get("BOT_TOKEN")
 APP_URL = os.environ.get("APP_URL")
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
