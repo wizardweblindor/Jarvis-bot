@@ -1,12 +1,12 @@
 import os
 import time
 import threading
-import random
-import requests
-import openai
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+import requests
+import random
+import openai
 
 # ------------------------
 # Config
@@ -14,19 +14,18 @@ from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 TOKEN = os.environ.get("BOT_TOKEN")
 APP_URL = os.environ.get("APP_URL")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
-openai.api_key = OPENAI_API_KEY
-
+openai.api_key = OPENAI_KEY
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
 dispatcher = Dispatcher(bot, None, workers=0)
 
+# ------------------------
 # In-memory storage
-tracked_stocks = {}   # {ticker: {'qty': int, 'target': float}}
-tracked_bets = []     # [{'stake': float, 'odds': float, 'goal': float}]
-chat_history = {}     # {chat_id: [{"role": "user"/"assistant", "content": "..."}]}
-MAX_HISTORY = 10      # number of messages to keep in context
+# ------------------------
+tracked_stocks = {}  # {ticker: {'qty': int, 'target': float}}
+tracked_bets = []    # list of {'stake': float, 'odds': float, 'goal': float}
 
 # ------------------------
 # Fun commands
@@ -129,7 +128,6 @@ dispatcher.add_handler(CommandHandler("totalbets", total_bets))
 # ------------------------
 def monitor():
     while True:
-        # Check stocks
         for ticker, data in tracked_stocks.items():
             try:
                 r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}").json()
@@ -142,7 +140,6 @@ def monitor():
             except:
                 continue
         
-        # Check bets
         for b in tracked_bets:
             payout = b['stake'] * b['odds']
             if b.get('goal') and payout >= b['goal']:
@@ -157,26 +154,18 @@ threading.Thread(target=monitor, daemon=True).start()
 # GPT chat handler
 # ------------------------
 def chat(update, context):
-    user_id = update.message.chat_id
-    user_message = update.message.text
-
-    if user_id not in chat_history:
-        chat_history[user_id] = []
-
-    chat_history[user_id].append({"role": "user", "content": user_message})
-    chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
-
-    # Optional system message for personality
-    messages = [{"role": "system", "content": "You are a helpful, witty assistant."}] + chat_history[user_id]
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=messages
-    )
-    reply = response['choices'][0]['message']['content']
-    chat_history[user_id].append({"role": "assistant", "content": reply})
-
-    update.message.reply_text(reply)
+    user_text = update.message.text
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_text}],
+            temperature=0.7,
+            max_tokens=300
+        )
+        reply = response.choices[0].message.content.strip()
+        update.message.reply_text(reply)
+    except Exception as e:
+        update.message.reply_text(f"Error: {e}")
 
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
 
@@ -189,6 +178,7 @@ def webhook():
     dispatcher.process_update(update)
     return "OK"
 
+# Set webhook safely once
 @app.before_request
 def setup_webhook_once():
     if not getattr(app, "webhook_set", False):
@@ -197,7 +187,7 @@ def setup_webhook_once():
         app.webhook_set = True
 
 # ------------------------
-# Run Flask app
+# Run app
 # ------------------------
 if __name__ == "__main__":
     print("🚀 Bot is starting up...")
