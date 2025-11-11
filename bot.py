@@ -171,12 +171,24 @@ def webhook():
     dispatcher.process_update(update)
     return "OK"
 
+# ------------------------
+# Flask webhook
+# ------------------------
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "OK"
+
+# ✅ Flask 3.0+ compatible webhook setup
 @app.before_request
 def setup_webhook_once():
     if not getattr(app, "webhook_set", False):
         bot.set_webhook(f"{APP_URL}/{TOKEN}")
+        print("✅ Webhook set successfully.")
         app.webhook_set = True
 
 if __name__ == "__main__":
+    print("🚀 Bot is starting up...")
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
