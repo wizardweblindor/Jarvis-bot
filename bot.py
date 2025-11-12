@@ -1,80 +1,62 @@
-import os
 import logging
-from threading import Thread
-from flask import Flask
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from openai import OpenAI
+import os
+import openai
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-# ---------- CONFIG ----------
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# ---------- LOGGING ----------
+# Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
 logger = logging.getLogger(__name__)
 
-# ---------- FLASK SERVER ----------
-app = Flask(__name__)
+# Environment variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-@app.route('/')
-def home():
-    return "✅ Jarvis AI bot is live and running on Render!"
+# OpenAI setup
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+# Start command
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("🤖 Hello! Jarvis AI bot is online and ready to chat!")
 
-# ---------- OPENAI CHAT FUNCTION ----------
-def ask_openai(prompt):
+# Handle messages
+def handle_message(update: Update, context: CallbackContext):
+    user_message = update.message.text
+
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are Jarvis, a helpful and clever AI assistant."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "You are Jarvis, a smart helpful assistant."},
+                {"role": "user", "content": user_message}
             ]
         )
-        return response.choices[0].message.content.strip()
+
+        bot_reply = response.choices[0].message.content.strip()
+        update.message.reply_text(bot_reply)
+
     except Exception as e:
-        logger.error(f"OpenAI error: {e}")
-        return "⚠️ Sorry, I had trouble processing that request."
+        logger.error(f"Error: {e}")
+        update.message.reply_text("⚠️ Sorry, there was an error with my AI response.")
 
-# ---------- TELEGRAM HANDLERS ----------
-def start(update, context):
-    update.message.reply_text("🤖 Hello, I'm Jarvis! Ask me anything or tell me a task to do.")
-
-def help_command(update, context):
-    update.message.reply_text("Just type a message and I'll use AI to respond helpfully!")
-
-def chat(update, context):
-    user_text = update.message.text
-    reply = ask_openai(user_text)
-    update.message.reply_text(reply)
-
-# ---------- MAIN ----------
 def main():
-    # Start Flask web server in background
-    Thread(target=run_flask).start()
-
+    """Start the bot."""
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN not found in environment variables.")
-        return
+        raise ValueError("BOT_TOKEN not found in environment variables.")
 
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help_command))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
-    logger.info("🚀 Jarvis AI bot started successfully!")
+    logger.info("Jarvis AI Bot is running...")
     updater.start_polling()
     updater.idle()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
