@@ -19,6 +19,7 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     print("🚀 Starting Jarvis Telegram bot...")
 
+    # Create Telegram bot application
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -26,7 +27,7 @@ async def main():
     )
     application.add_handler(CommandHandler("start", start))
 
-    # Run the bot polling concurrently with Flask
+    # Flask server (using Hypercorn)
     async def run_flask():
         from hypercorn.asyncio import serve
         from hypercorn.config import Config
@@ -34,16 +35,12 @@ async def main():
         config.bind = ["0.0.0.0:" + os.environ.get("PORT", "10000")]
         await serve(app, config)
 
+    # Run Telegram polling + Flask at same time
     await asyncio.gather(
-        application.run_polling(stop_signals=None),
+        application.run_polling(stop_signals=None, close_loop=False),
         run_flask()
     )
 
-if __name__ == "__main__":
-    asyncio.run(main())    await asyncio.gather(
-        application.run_polling(stop_signals=None),
-        run_flask()
-    )
 
 if __name__ == "__main__":
     asyncio.run(main())
