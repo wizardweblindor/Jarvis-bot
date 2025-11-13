@@ -21,4 +21,5 @@ packaging==25.0
 tornado==6.1
 certifi==2023.7.22
 idna==3.4
-httpx==0.25.2
+openai==2.7.2
+httpx~=0.26.0
