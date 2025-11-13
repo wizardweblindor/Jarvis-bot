@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Keys from environment
 # ------------------------------
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
