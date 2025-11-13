@@ -40,4 +40,10 @@ async def main():
     )
 
 if __name__ == "__main__":
+    asyncio.run(main())    await asyncio.gather(
+        application.run_polling(stop_signals=None),
+        run_flask()
+    )
+
+if __name__ == "__main__":
     asyncio.run(main())
