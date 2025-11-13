@@ -1,5 +1,4 @@
 import os
-import threading
 import asyncio
 from flask import Flask
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -16,8 +15,10 @@ def home():
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! Jarvis Bot is online 🚀")
 
-# Telegram bot runner
-async def run_telegram():
+# Combined async runner
+async def main():
+    print("🚀 Starting Jarvis Telegram bot...")
+
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -25,18 +26,18 @@ async def run_telegram():
     )
     application.add_handler(CommandHandler("start", start))
 
-    # Disable signal handling for background thread
-    await application.run_polling(
-        stop_signals=None,  # 👈 prevents wakeup_fd / signal errors
-        close_loop=False
+    # Run the bot polling concurrently with Flask
+    async def run_flask():
+        from hypercorn.asyncio import serve
+        from hypercorn.config import Config
+        config = Config()
+        config.bind = ["0.0.0.0:" + os.environ.get("PORT", "10000")]
+        await serve(app, config)
+
+    await asyncio.gather(
+        application.run_polling(stop_signals=None),
+        run_flask()
     )
 
-# Background thread starter
-def start_bot_thread():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_telegram())
-
 if __name__ == "__main__":
-    threading.Thread(target=start_bot_thread, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    asyncio.run(main())
