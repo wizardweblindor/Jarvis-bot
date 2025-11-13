@@ -1,36 +1,30 @@
 import os
 import asyncio
-import threading
 from flask import Flask
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler
 
+# Load your Telegram bot token
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+
+# Flask app
 app = Flask(__name__)
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN missing in environment variables.")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Jarvis online and ready to chat!")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    await update.message.reply_text(f"You said: {text}")
 
 @app.route("/")
 def home():
-    return "Jarvis bot is live ✅"
+    return "Jarvis Bot is running!"
 
-async def run_telegram():
+# Telegram bot commands
+async def start(update, context):
+    await update.message.reply_text("Hello! I am Jarvis Bot.")
+
+async def run_telegram_bot():
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Run polling in main thread (Render requires this)
     await application.run_polling()
 
-def start_asyncio_thread():
-    asyncio.run(run_telegram())
-
 if __name__ == "__main__":
-    threading.Thread(target=start_asyncio_thread).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    # Start Flask in a separate process via Gunicorn on Render
+    # and run the Telegram bot in the main thread
+    asyncio.run(run_telegram_bot())
