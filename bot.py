@@ -9,18 +9,33 @@ from telegram.ext import (
 )
 from openai import OpenAI
 
+# -------------------------------
+# Environment variables
+# -------------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_KEY)
 
+# -------------------------------
+# Memory storage and user modes
+# -------------------------------
 USER_MEMORY = {}
+USER_MODE = {}  # tracks if user is in "chat", "image", etc.
 
+# -------------------------------
+# FastAPI server for Render
+# -------------------------------
 app = FastAPI()
 
 @app.get("/")
 def home():
     return {"status": "Jarvis Advanced Bot Running"}
 
+# -------------------------------
+# Telegram Bot Handlers
+# -------------------------------
+
+# /start command with buttons
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💬 Chat", callback_data="chat")],
@@ -34,33 +49,58 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# Callback query menu handler
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+
     if query.data == "chat":
+        USER_MODE[user_id] = "chat"
         await query.edit_message_text("💬 Chat mode activated. Send a message.")
     elif query.data == "image":
+        USER_MODE[user_id] = "image"
         await query.edit_message_text("🖼 Send me a description and I will generate an image.")
     elif query.data == "v2t":
+        USER_MODE[user_id] = "voice"
         await query.edit_message_text("🎤 Send a voice message and I'll convert it to text.")
     elif query.data == "memory":
-        await query.edit_message_text("🧠 Memory commands:\n/addmemory <text>\n/clearmemory")
+        USER_MODE[user_id] = "memory"
+        await query.edit_message_text(
+            "🧠 Memory commands:\n/addmemory <text>\n/clearmemory"
+        )
     elif query.data == "tools":
-        await query.edit_message_text("📊 Tools available:\n/calc 5+5\n/trade BTC 100 to USD")
+        USER_MODE[user_id] = "tools"
+        await query.edit_message_text(
+            "📊 Tools available:\n/calc 5+5\n/trade BTC 100 to USD"
+        )
 
+# -------------------------------
+# ChatGPT text response
+# -------------------------------
 async def chatgpt_text(message: str, user_id: int):
     memory = USER_MEMORY.get(user_id, "")
     prompt = f"User memory: {memory}\n\nUser says: {message}"
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message["content"]
 
+# -------------------------------
+# Image generation
+# -------------------------------
 async def generate_image(prompt: str):
-    img = client.images.generate(model="gpt-image-1", prompt=prompt)
+    img = client.images.generate(
+        model="gpt-image-1",
+        prompt=prompt
+    )
     return img.data[0].url
 
+# -------------------------------
+# Memory management
+# -------------------------------
 async def add_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = " ".join(context.args)
@@ -72,35 +112,69 @@ async def clear_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_MEMORY[user_id] = ""
     await update.message.reply_text("🧠 Memory cleared.")
 
+# -------------------------------
+# Voice-to-text
+# -------------------------------
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
     file = await update.message.voice.get_file()
-    path = f"voice_{update.message.from_user.id}.ogg"
+    path = f"voice_{user_id}.ogg"
     await file.download_to_drive(path)
+
     with open(path, "rb") as f:
         text_response = client.audio.transcriptions.create(
             model="gpt-4o-mini-transcribe",
             file=f
         )
+
     await update.message.reply_text(f"🎤 Transcribed text: {text_response.text}")
 
+# -------------------------------
+# Handle user text messages
+# -------------------------------
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    mode = USER_MODE.get(user_id, "")
+    text = update.message.text
+
+    if mode == "chat":
+        response = await chatgpt_text(text, user_id)
+        await update.message.reply_text(response)
+    elif mode == "image":
+        url = await generate_image(text)
+        await update.message.reply_text(f"🖼 Image generated: {url}")
+    else:
+        await update.message.reply_text("Please select a mode from /start first!")
+
+# -------------------------------
+# Telegram Bot Startup
+# -------------------------------
 async def start_telegram_bot():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .build()
+    )
+
+    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(menu_handler))
     application.add_handler(CommandHandler("addmemory", add_memory))
     application.add_handler(CommandHandler("clearmemory", clear_memory))
     application.add_handler(MessageHandler(filters.VOICE, voice_handler))
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()  # uses internal loop
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # Start polling
+    await application.run_polling(stop_signals=None)
 
 # -------------------------------
 # Run both Telegram + FastAPI
 # -------------------------------
-@app.on_event("startup")
-async def startup_event():
-    # Schedule Telegram bot in the existing event loop
-    asyncio.create_task(start_telegram_bot())
-
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    # Run Telegram bot in background
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_telegram_bot())
+
+    # Run FastAPI server
+    port = int(os.getenv("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
