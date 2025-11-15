@@ -1,4 +1,5 @@
 import os
+import threading
 import asyncio
 from fastapi import FastAPI
 import uvicorn
@@ -34,7 +35,6 @@ def home():
 # Telegram Bot Handlers
 # -------------------------------
 
-# /start command with buttons
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💬 Chat", callback_data="chat")],
@@ -48,7 +48,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# Callback query menu handler
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -123,31 +122,32 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🎤 Transcribed text: {text_response.text}")
 
 # -------------------------------
-# Telegram Bot Startup
+# Start Telegram Bot
 # -------------------------------
 async def start_telegram_bot():
-    application = (
-        ApplicationBuilder()
-        .token(BOT_TOKEN)
-        .build()
-    )
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Handlers
+    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(menu_handler))
     application.add_handler(CommandHandler("addmemory", add_memory))
     application.add_handler(CommandHandler("clearmemory", clear_memory))
     application.add_handler(MessageHandler(filters.VOICE, voice_handler))
 
-    # Start polling
+    # Run bot
     await application.run_polling(stop_signals=None)
 
 # -------------------------------
 # Run both Telegram + FastAPI
 # -------------------------------
-loop = asyncio.get_event_loop()
-loop.create_task(start_telegram_bot())
+def run_bot_in_thread():
+    asyncio.run(start_telegram_bot())
 
 if __name__ == "__main__":
+    # Start Telegram bot in a separate thread
+    t = threading.Thread(target=run_bot_in_thread)
+    t.start()
+
+    # Start FastAPI server
     port = int(os.getenv("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
